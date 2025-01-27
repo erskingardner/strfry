@@ -1,9 +1,6 @@
-# Built by Akito
-# npub1wprtv89px7z2ut04vvquscpmyfuzvcxttwy2csvla5lvwyj807qqz5aqle
-
 FROM alpine:3.18.3 AS build
 
-ENV TZ=Europe/London
+ENV TZ=UTC
 
 WORKDIR /build
 
@@ -28,7 +25,7 @@ RUN \
   && rm -rf /var/cache/apk/* \
   && git submodule update --init \
   && make setup-golpe \
-  && make -j4
+  && make -j2
 
 FROM alpine:3.18.3
 
@@ -42,11 +39,15 @@ RUN \
     libb2 \
     zstd \
     libressl \
-  && rm -rf /var/cache/apk/*
+    curl \
+  && rm -rf /var/cache/apk/* \
+  && mkdir -p /app/data /app/config
 
 COPY --from=build /build/strfry strfry
 
 EXPOSE 7777
+
+VOLUME ["/app/data", "/app/config"]
 
 ENTRYPOINT ["/app/strfry"]
 CMD ["relay"]

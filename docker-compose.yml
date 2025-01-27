@@ -1,0 +1,47 @@
+services:
+  strfry:
+    container_name: strfry_relay
+    build:
+      context: .
+      dockerfile: Dockerfile  # You can change this to ubuntu.Dockerfile if preferred
+    volumes:
+      - ./data:/app/strfry-db  # Match sample file's DB path
+      - ./strfry.conf:/etc/strfry.conf:ro  # Use strfry.conf from repo root
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.5'
+    environment:
+      - TZ=UTC  # Adjust timezone as needed
+    command: ["relay", "--config", "/etc/strfry.conf"]  # Updated config path to match volume mount
+    networks:
+      strfry:  # Changed to match the network name in Caddy's compose file
+        aliases:
+          - strfry
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7777"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "caddy=relay.jeffg.fyi"
+      - "caddy.reverse_proxy=/* {{upstreams 7777}}"
+
+networks:
+  strfry:
+    external: true
+    name: strfry  # This must match the network name in Caddy's compose file
+
+volumes:
+  caddy_data:
+  caddy_config:
+
