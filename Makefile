@@ -25,6 +25,31 @@ export XLDFLAGS  += $(BREW_LIBS)
 endif
 INCS += -Iexternal/negentropy/cpp
 
+# --- uWebSockets slow-client double-free fix ----------------------------------
+# The fix lives in the nested uWebSockets submodule, which is pinned to an
+# upstream hoytech commit. Rather than fork the whole submodule chain, we keep
+# the change as a patch in this repo and apply it (idempotently) just before the
+# uWebSockets static lib is built.
+UWS_DIR   := golpe/external/uWebSockets
+UWS_PATCH := $(abspath patches/uws-double-free-slow-client.patch)
+
+golpe/external/uWebSockets/libuWS.a: build/.uws-patched.stamp
+
+build/.uws-patched.stamp: $(UWS_PATCH)
+	@mkdir -p build
+	@if [ ! -e $(UWS_DIR)/src/WebSocket.cpp ]; then \
+	  echo "ERROR: $(UWS_DIR) not checked out. Run 'make setup-golpe' first." >&2; \
+	  exit 1; \
+	fi
+	@if git -C $(UWS_DIR) apply --reverse --check $(UWS_PATCH) >/dev/null 2>&1; then \
+	  echo "uWebSockets double-free patch already applied."; \
+	else \
+	  echo "Applying uWebSockets double-free patch..."; \
+	  git -C $(UWS_DIR) apply $(UWS_PATCH); \
+	fi
+	@touch $@
+# -----------------------------------------------------------------------------
+
 build/StrfryTemplates.h: $(shell find src/tmpls/ -type f -name '*.tmpl')
 	PERL5LIB=golpe/vendor/ perl golpe/external/templar/templar.pl src/tmpls/ strfrytmpl $@
 

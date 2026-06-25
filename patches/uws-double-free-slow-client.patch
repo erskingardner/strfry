@@ -1,0 +1,39 @@
+diff --git a/src/Epoll.cpp b/src/Epoll.cpp
+index adac5bd..4b3d7ec 100644
+--- a/src/Epoll.cpp
++++ b/src/Epoll.cpp
+@@ -32,5 +32,12 @@ void Loop::doEpoll(int epollTimeout) {
+     for (int i = 0; i < numFdReady; i++) {
+         Poll *poll = (Poll *) readyEvents[i].data.ptr;
++        // A poll closed by an earlier callback in this same batch is still
++        // present in readyEvents (its deletion is deferred to loop->closing).
++        // Dispatching to it would operate on a closed fd (-1) and re-run the
++        // teardown path. Skip it.
++        if (poll->isClosed()) {
++            continue;
++        }
+         int status = -bool(readyEvents[i].events & EPOLLERR);
+         callbacks[poll->state.cbIndex](poll, status, readyEvents[i].events);
+     }
+diff --git a/src/WebSocket.cpp b/src/WebSocket.cpp
+index 89e98fd..e22ebbb 100644
+--- a/src/WebSocket.cpp
++++ b/src/WebSocket.cpp
+@@ -292,4 +292,16 @@ template <bool isServer>
+ void WebSocket<isServer>::onEnd(uS::Socket *s, char *message, size_t messageLength) {
+     WebSocket<isServer> *webSocket = static_cast<WebSocket<isServer> *>(s);
+-
++    // Idempotency guard: onEnd can be re-entered for a socket that was already
++    // closed earlier in the same event-loop iteration. This happens when
++    // terminate() is called from a *different* poll's callback (the slow-client
++    // back-pressure cap does exactly this) while this socket still has a pending
++    // event sitting in the same epoll batch. closeSocket() sets the fd to -1
++    // (isClosed()) but defers the object delete, so the stale event re-enters
++    // here. Bail out to avoid firing disconnectionHandler twice and
++    // double-closing the socket (which double-frees both the user data and the
++    // WebSocket itself).
++    if (webSocket->isClosed()) {
++        return;
++    }
++
+     if (!webSocket->isShuttingDown()) {

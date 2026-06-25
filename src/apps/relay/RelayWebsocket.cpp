@@ -290,6 +290,13 @@ void RelayServer::runWebsocket(ThreadPool<MsgWebsocket>::Thread &thr) {
 
     hubGroup->onDisconnection([&](uWS::WebSocket<uWS::SERVER> *ws, int code, char *message, size_t length) {
         auto *c = (Connection*)ws->getUserData();
+        // Defense-in-depth: tolerate a second disconnection callback for the same
+        // socket (see the slow-client terminate() path in doSend). Null the
+        // user-data on the first teardown so any re-entrant callback - here or in
+        // the send-completion callback in doSend - becomes a no-op instead of a
+        // use-after-free / double free.
+        if (!c) return;
+        ws->setUserData(nullptr);
         uint64_t connId = c->connId;
 
         auto upComp = renderPercent(1.0 - (double)c->stats.bytesUpCompressed / c->stats.bytesUp);
